@@ -29,7 +29,7 @@ def _core(request: Request):
 async def health(request: Request) -> dict[str, Any]:
     core = _core(request)
     status: HealthStatus = core.health_status
-    return {"status": status}
+    return {"status": status, "error": core.health_error}
 
 
 @router.get("/queue")
@@ -215,6 +215,7 @@ def _dashboard_html() -> str:
       <div class=\"grid\">
         <div class=\"card kpi\"><div class=\"kpiTitle\"><i data-lucide=\"activity\"></i>Health</div><div class=\"kpiValue\" id=\"health\">—</div></div>
         <div class=\"card kpi\"><div class=\"kpiTitle\"><i data-lucide=\"layers\"></i>Jobs total</div><div class=\"kpiValue\" id=\"jobsTotal\">0</div></div>
+        <div class=\"card kpi\"><div class=\"kpiTitle\"><i data-lucide=\"triangle-alert\"></i>Errors</div><div class=\"kpiValue\" id=\"jobsFailed\">0</div></div>
         <div class=\"card kpi\"><div class=\"kpiTitle\"><i data-lucide=\"list\"></i>Queued</div><div class=\"kpiValue\" id=\"jobsQueued\">0</div></div>
         <div class=\"card kpi\"><div class=\"kpiTitle\"><i data-lucide=\"cpu\"></i>Processing</div><div class=\"kpiValue\" id=\"jobsRunning\">0</div></div>
       </div>
@@ -387,6 +388,7 @@ def _dashboard_html() -> str:
         h.innerHTML = '<span class="' + chipClass(hs) + '"' + (he ? (' title="' + he.replaceAll('"', '\\"') + '"') : '') + '>' + hs + '</span>';
         const jobs = data.jobs || {};
         setText('jobsTotal', String(jobs.total || 0));
+        setText('jobsFailed', String(jobs.failed || 0));
         setText('jobsQueued', String(jobs.queued || 0));
         setText('jobsRunning', String(jobs.running || 0));
         renderGpus(data.gpus || []);

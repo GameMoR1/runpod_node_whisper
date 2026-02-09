@@ -30,6 +30,8 @@ class JobQueue:
         self._gpu_running: dict[int, str] = {}
         self._workers: list[asyncio.Task] = []
         self._stop = asyncio.Event()
+        self._failed_total = 0
+        self._completed_total = 0
 
     async def start_workers(self) -> None:
         n = gpu_count()
@@ -87,13 +89,16 @@ class JobQueue:
 
     def serialize_jobs_public(self) -> dict[str, Any]:
         queued, running = self.snapshot_ids()
-        total = len(self._jobs)
+        completed = [j.job_id for j in self._jobs.values() if j.status == "completed"]
+        failed = [j.job_id for j in self._jobs.values() if j.status == "failed"]
         return {
-            "total": total,
+            "total": len(completed),
             "queued": len(queued),
             "running": len(running),
+            "failed": len(failed),
             "queued_ids": queued,
             "running_ids": running,
+            "failed_ids": failed,
         }
 
     def serialize_gpus_public(self) -> list[dict[str, Any]]:
@@ -174,10 +179,12 @@ class JobQueue:
                 job.result = result
                 job.status = "completed"
                 job.error = None
+                self._completed_total += 1
                 logger.info("job completed: %s", job_id)
             except Exception as e:
                 job.status = "failed"
                 job.error = str(e)
+                self._failed_total += 1
                 logger.exception("job failed: %s", job_id)
             finally:
                 job.finished_at_ms = now_ms()
