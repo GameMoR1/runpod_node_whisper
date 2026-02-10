@@ -83,6 +83,10 @@ class Settings(BaseSettings):
 
     DASHBOARD_REFRESH_MS: int = 2000
 
+    MODEL_DOWNLOAD_ATTEMPTS: int = 3
+    MODEL_DOWNLOAD_TIMEOUT_S: int = 30
+    MODEL_PREPARE_RETRY_S: int = 60
+
     WHISPER_DEFAULT_LANGUAGE: str = "Russian"
     WHISPER_TEMPERATURE: float = 0.0
     WHISPER_LOGPROB_THRESHOLD: float = -1.0

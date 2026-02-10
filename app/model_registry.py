@@ -20,7 +20,15 @@ class ModelRegistry:
         self._lock = asyncio.Lock()
 
     def is_model_known(self, model_name: str) -> bool:
-        return model_name in self._models
+        m = self._models.get(model_name)
+        return m is not None and m.status == "downloaded"
+
+    def unready_models(self) -> list[ModelState]:
+        return [m for m in self.all() if m.status != "downloaded"]
+
+    def unready_details(self) -> str:
+        bad = self.unready_models()
+        return ", ".join(f"{m.model_name}(status={m.status}, error={m.error})" for m in bad)
 
     def all(self) -> list[ModelState]:
         return list(self._models.values())
@@ -105,14 +113,6 @@ class ModelRegistry:
         for name in list(self._models.keys()):
             await self._download_model(name)
 
-        async with self._lock:
-            bad = [m for m in self._models.values() if m.status != "downloaded"]
-            if bad:
-                details = ", ".join(
-                    f"{m.model_name}(status={m.status}, error={m.error})" for m in bad
-                )
-                raise RuntimeError(f"model preparation failed: {details}")
-
     async def _download_model(self, model_name: str) -> None:
         async with self._lock:
             st = self._models.get(model_name)
@@ -125,24 +125,44 @@ class ModelRegistry:
         logger.info("downloading model: %s", model_name)
 
         def _blocking_download() -> None:
+            import socket
+
+            socket.setdefaulttimeout(settings.MODEL_DOWNLOAD_TIMEOUT_S)
+
             Path(settings.MODEL_CACHE_DIR).mkdir(parents=True, exist_ok=True)
             import whisper
 
             m = whisper.load_model(model_name, device="cpu", download_root=settings.MODEL_CACHE_DIR)
             del m
 
-        try:
-            await asyncio.to_thread(_blocking_download)
-            async with self._lock:
-                st2 = self._models.get(model_name)
-                if st2 is not None:
-                    st2.status = "downloaded"
-                    st2.progress = 100.0
-            logger.info("model downloaded: %s", model_name)
-        except Exception as e:
-            async with self._lock:
-                st2 = self._models.get(model_name)
-                if st2 is not None:
-                    st2.status = "error"
-                    st2.error = str(e)
-            logger.exception("model download failed: %s", model_name)
+        last_err: Exception | None = None
+        for attempt in range(int(settings.MODEL_DOWNLOAD_ATTEMPTS)):
+            try:
+                await asyncio.to_thread(_blocking_download)
+                async with self._lock:
+                    st2 = self._models.get(model_name)
+                    if st2 is not None:
+                        st2.status = "downloaded"
+                        st2.progress = 100.0
+                        st2.error = None
+                logger.info("model downloaded: %s", model_name)
+                return
+            except Exception as e:
+                last_err = e
+                wait_s = min(30, 2**attempt)
+                async with self._lock:
+                    st2 = self._models.get(model_name)
+                    if st2 is not None:
+                        st2.status = "error"
+                        st2.error = str(e)
+                logger.warning(
+                    "model download failed: %s (attempt %d/%d): %s",
+                    model_name,
+                    attempt + 1,
+                    int(settings.MODEL_DOWNLOAD_ATTEMPTS),
+                    e,
+                )
+                if attempt + 1 < int(settings.MODEL_DOWNLOAD_ATTEMPTS):
+                    await asyncio.sleep(wait_s)
+        if last_err is not None:
+            logger.exception("model download failed permanently: %s", model_name)

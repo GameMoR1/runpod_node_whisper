@@ -52,27 +52,48 @@ class AppState:
         self._init_task = asyncio.create_task(self._initialize())
 
     async def _initialize(self) -> None:
+        if self.models is None or self.queue is None:
+            self.health_status = "error"
+            self.health_error = "service not initialized"
+            return
+
+        logger.info("initializing service")
         try:
-            if self.models is None or self.queue is None:
-                raise RuntimeError("service not initialized")
-            logger.info("initializing service")
             _check_ffmpeg()
             _check_whisper_module()
-
-            token = await fetch_hugging_face_token()
-            if token:
-                os.environ["HF_TOKEN"] = token
-                os.environ["HUGGINGFACEHUB_API_TOKEN"] = token
-
-            await self.models.load_from_db_and_prepare()
-            await self.queue.start_workers()
-            self.health_status = "ready"
-            self.health_error = None
-            logger.info("service ready")
         except Exception as e:
             self.health_status = "error"
             self.health_error = str(e)
             logger.exception("service failed to initialize")
+            return
+
+        try:
+            token = await fetch_hugging_face_token()
+            if token:
+                os.environ["HF_TOKEN"] = token
+                os.environ["HUGGINGFACEHUB_API_TOKEN"] = token
+        except Exception:
+            pass
+
+        while True:
+            try:
+                await self.models.load_from_db_and_prepare()
+                details = self.models.unready_details()
+                if details:
+                    raise RuntimeError(f"model preparation failed: {details}")
+
+                await self.queue.start_workers()
+                self.health_status = "ready"
+                self.health_error = None
+                logger.info("service ready")
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.health_status = "error"
+                self.health_error = str(e)
+                logger.warning("service not ready: %s", e)
+                await asyncio.sleep(max(5, int(settings.MODEL_PREPARE_RETRY_S)))
 
     async def shutdown(self) -> None:
         if self._init_task is not None:
