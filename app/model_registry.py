@@ -105,6 +105,14 @@ class ModelRegistry:
         for name in list(self._models.keys()):
             await self._download_model(name)
 
+        async with self._lock:
+            bad = [m for m in self._models.values() if m.status != "downloaded"]
+            if bad:
+                details = ", ".join(
+                    f"{m.model_name}(status={m.status}, error={m.error})" for m in bad
+                )
+                raise RuntimeError(f"model preparation failed: {details}")
+
     async def _download_model(self, model_name: str) -> None:
         async with self._lock:
             st = self._models.get(model_name)

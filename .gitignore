@@ -16,3 +16,4 @@ build/
 .env
 .trae/
 data/
+test.py
