@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.config import settings
-from app.db import dispose_engine
+from app.db import dispose_engine, fetch_hugging_face_token
 from app.model_registry import ModelRegistry
 from app.queueing import JobQueue
 from app.types import HealthStatus
@@ -58,6 +58,12 @@ class AppState:
             logger.info("initializing service")
             _check_ffmpeg()
             _check_whisper_module()
+
+            token = await fetch_hugging_face_token()
+            if token:
+                os.environ["HF_TOKEN"] = token
+                os.environ["HUGGINGFACEHUB_API_TOKEN"] = token
+
             await self.models.load_from_db_and_prepare()
             await self.queue.start_workers()
             self.health_status = "ready"

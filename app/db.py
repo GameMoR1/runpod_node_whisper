@@ -57,3 +57,22 @@ async def fetch_all(sql: str, params: Optional[dict[str, Any]] = None) -> list[d
 async def fetch_one(sql: str, params: Optional[dict[str, Any]] = None) -> Optional[dict[str, Any]]:
     rows = await fetch_all(sql, params)
     return rows[0] if rows else None
+
+
+async def fetch_hugging_face_token() -> Optional[str]:
+    queries = [
+        'SELECT "key" AS key FROM hugging_face_key LIMIT 1',
+        'SELECT "key" AS key FROM public.hugging_face_key LIMIT 1',
+    ]
+    for q in queries:
+        try:
+            row = await fetch_one(q)
+        except Exception:
+            continue
+        if not row:
+            continue
+        token = row.get("key")
+        if isinstance(token, str):
+            token = token.strip()
+            return token or None
+    return None
