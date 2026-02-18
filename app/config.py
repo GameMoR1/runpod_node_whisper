@@ -88,8 +88,8 @@ class Settings(BaseSettings):
     MODEL_PREPARE_RETRY_S: int = 60
 
     WHISPER_DEFAULT_LANGUAGE: str = "Russian"
-    WHISPER_TEMPERATURE: float = 0.0
-    WHISPER_LOGPROB_THRESHOLD: float = -1.0
+    WHISPER_TEMPERATURE: float = 0.2
+    WHISPER_LOGPROB_THRESHOLD: float = -0.8
 
     FFMPEG_PATH: str = "ffmpeg"
 
