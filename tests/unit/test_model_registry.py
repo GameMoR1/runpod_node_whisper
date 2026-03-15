@@ -1,9 +1,9 @@
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
+
 import asyncio
-from pathlib import Path
 from app.model_registry import ModelRegistry
-from app.types import ModelState
+from conftest import parameters_model_tiny
 
 
 @pytest.mark.asyncio
@@ -36,7 +36,6 @@ async def test_load_enabled_models_from_db(mock_db_models):
 
 @pytest.mark.asyncio
 async def test_filter_only_enabled_models(mock_db_models):
-    mock_fetch, mock_download = mock_db_models
     registry = ModelRegistry()
     await registry.load_from_db_and_prepare()
 
@@ -50,17 +49,10 @@ async def test_filter_only_enabled_models(mock_db_models):
 
 
 @pytest.mark.asyncio
-async def test_successful_model_download():
+async def test_successful_model_download(parameters_model_tiny):
     registry = ModelRegistry()
 
-    registry._models["tiny"] = ModelState(
-        id_model=1,
-        model_name="tiny",
-        enabled=True,
-        status="queued_for_download",
-        progress=0.0,
-        error=None
-    )
+    registry._models["tiny"] = parameters_model_tiny
 
     assert registry._models["tiny"].status == "queued_for_download"
     assert registry._models["tiny"].progress == 0.0
@@ -83,17 +75,10 @@ async def test_successful_model_download():
 
 
 @pytest.mark.asyncio
-async def test_model_download_error_with_retry():
+async def test_model_download_error_with_retry(parameters_model_tiny):
     registry = ModelRegistry()
 
-    registry._models["tiny"] = ModelState(
-        id_model=1,
-        model_name="tiny",
-        enabled=True,
-        status="queued_for_download",
-        progress=0.0,
-        error=None
-    )
+    registry._models["tiny"] = parameters_model_tiny
 
     assert registry._models["tiny"].status == "queued_for_download"
 
@@ -110,26 +95,12 @@ async def test_model_download_error_with_retry():
 
 
 @pytest.mark.asyncio
-async def test_parallel_download_two_models():
+async def test_parallel_download_two_models(parameters_model_tiny, parameters_model_base):
     registry = ModelRegistry()
 
-    registry._models["tiny"] = ModelState(
-        id_model=1,
-        model_name="tiny",
-        enabled=True,
-        status="queued_for_download",
-        progress=0.0,
-        error=None
-    )
+    registry._models["tiny"] = parameters_model_tiny
 
-    registry._models["base"] = ModelState(
-        id_model=2,
-        model_name="base",
-        enabled=True,
-        status="queued_for_download",
-        progress=0.0,
-        error=None
-    )
+    registry._models["base"] = parameters_model_base
 
     mock_whisper = MagicMock()
 
@@ -161,15 +132,7 @@ async def test_parallel_download_two_models():
 
 
 @pytest.mark.asyncio
-async def test_skip_already_downloaded_model():
-    models_rows = [
-        {"id_model": 1, "model_name": "tiny"},
-        {"id_model": 2, "model_name": "base"},
-    ]
-    enabled_rows = [
-        {"model_id": 1},
-        {"model_id": 2},
-    ]
+async def test_skip_already_downloaded_model(models_rows, enabled_rows):
 
     with patch("app.model_registry.fetch_all", new_callable=AsyncMock) as mock_fetch:
         mock_fetch.side_effect = [models_rows, enabled_rows]
