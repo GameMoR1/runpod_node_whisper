@@ -35,3 +35,12 @@ jobs:
       run: |
         export PYTHONPATH=$PYTHONPATH:.
         pytest --cov=app tests/ --cov-report=term-missing
+      
+      env:
+        DB_HOST: localhost
+        DB_PORT: "5432"
+        DB_NAME: test_db
+        DB_USER: postgres
+        DB_PASS: postgres
+
+    
