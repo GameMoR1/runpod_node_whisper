@@ -14,8 +14,6 @@ from app.server import app as real_app
 from app.state import AppState
 from unittest.mock import patch, MagicMock
 
-BASE_URL = "http://localhost:8000"
-
 @pytest.fixture
 def mock_db_models():
     models_rows = [
@@ -207,8 +205,9 @@ def test_transcription_text():
         }
 
 @pytest.fixture
-async def client_is_endpoint():
-    async with AsyncClient(base_url=BASE_URL, timeout=30.0) as ac:
+async def client_is_endpoint(app):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test", timeout=30.0) as ac:
         yield ac
 
 @pytest_asyncio.fixture
