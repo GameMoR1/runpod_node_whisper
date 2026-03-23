@@ -3,7 +3,7 @@ from app.server import app
 from fastapi.testclient import TestClient
 
 @pytest.mark.asyncio
-async def test_endpoints_availability(client_is_endpoint, data_model_tiny, files):
+async def test_endpoints_availability(client_is_endpoint, data_model_tiny, files, mock_app_state_with_multiple_models):
     response = await client_is_endpoint.get("/health")
     assert response.status_code == 200
 
