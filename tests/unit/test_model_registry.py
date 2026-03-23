@@ -5,7 +5,6 @@ import asyncio
 from app.model_registry import ModelRegistry
 from conftest import parameters_model_tiny
 
-
 @pytest.mark.asyncio
 async def test_load_enabled_models_from_db(mock_db_models):
     mock_fetch, mock_download = mock_db_models
@@ -33,7 +32,6 @@ async def test_load_enabled_models_from_db(mock_db_models):
     assert mock_fetch.call_count == 2
     assert mock_download.call_count == 2
 
-
 @pytest.mark.asyncio
 async def test_filter_only_enabled_models(mock_db_models):
     registry = ModelRegistry()
@@ -46,7 +44,6 @@ async def test_filter_only_enabled_models(mock_db_models):
 
     assert enabled_count == 2
     assert len(registry._models) == 2
-
 
 @pytest.mark.asyncio
 async def test_successful_model_download(parameters_model_tiny):
@@ -73,7 +70,6 @@ async def test_successful_model_download(parameters_model_tiny):
     assert registry._models["tiny"].progress == 100.0
     assert registry._models["tiny"].error is None
 
-
 @pytest.mark.asyncio
 async def test_model_download_error_with_retry(parameters_model_tiny):
     registry = ModelRegistry()
@@ -92,7 +88,6 @@ async def test_model_download_error_with_retry(parameters_model_tiny):
     assert registry._models["tiny"].status == "error"
     assert registry._models["tiny"].progress == 0.0
     assert registry._models["tiny"].error == "Connection error"
-
 
 @pytest.mark.asyncio
 async def test_parallel_download_two_models(parameters_model_tiny, parameters_model_base):
@@ -129,7 +124,6 @@ async def test_parallel_download_two_models(parameters_model_tiny, parameters_mo
     assert registry._models["base"].status == "downloaded"
     assert registry._models["base"].progress == 100.0
     assert registry._models["base"].error is None
-
 
 @pytest.mark.asyncio
 async def test_skip_already_downloaded_model(models_rows, enabled_rows):
