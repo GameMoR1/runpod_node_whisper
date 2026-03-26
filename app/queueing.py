@@ -207,6 +207,8 @@ class JobQueue:
                 "processing_time_s": payload.get("processing_time_s"),
                 "gpu": job.result.get("gpu"),
                 "token_count": job.result.get("token_count"),
+                "vram_peak_allocated_mb": job.result.get("vram_peak_allocated_mb"),
+                "language": job.language,
             }
             payload["error"] = None
 
