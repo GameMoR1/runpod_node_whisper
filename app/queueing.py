@@ -16,7 +16,8 @@ from app.gpu import gpu_count, gpu_metrics, gpu_name, torch_cuda_available, torc
 from app.model_registry import ModelRegistry
 from app.types import GpuState, JobRecord
 from app.utils_time import now_ms, ms_to_s
-from app.whisper_runner import transcribe_on_gpu
+from app.vad_chunking import build_hybrid_chunks, get_speech_segments
+from app.whisper_runner import transcribe_chunks_on_gpu
 
 
 logger = logging.getLogger("whisper_node.queue")
@@ -168,14 +169,22 @@ class JobQueue:
             wav_path = job_dir / "audio.wav"
 
             try:
-                await preprocess_to_wav(str(in_path), str(wav_path))
+                preprocess_info = await preprocess_to_wav(str(in_path), str(wav_path))
                 logger.info("job preprocessed: %s", job_id)
-                result = await transcribe_on_gpu(
+                segments = get_speech_segments(wav_path)
+                chunks = build_hybrid_chunks(audio_path=wav_path, segments=segments, job_dir=job_dir)
+                result = await transcribe_chunks_on_gpu(
                     gpu_index=gpu_index,
-                    wav_path=str(wav_path),
+                    chunks=chunks,
                     model_name=job.model,
                     language=job.language,
                 )
+                if isinstance(result, dict):
+                    result["pipeline"] = {
+                        "preprocess": preprocess_info,
+                        "vad": {"method": settings.VAD_METHOD, "segments": len(segments)},
+                        "chunking": {"mode": "vad_hybrid", "chunks": len(chunks)},
+                    }
                 job.result = result
                 job.status = "completed"
                 job.error = None

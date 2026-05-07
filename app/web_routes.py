@@ -13,6 +13,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from app.config import settings
 from app.types import HealthStatus
+from app.vad_chunking import pipeline_info
 
 
 logger = logging.getLogger("whisper_node.http")
@@ -106,6 +107,7 @@ async def dashboard_state(request: Request) -> dict[str, Any]:
         if q is None
         else q.serialize_jobs_public(),
         "refresh_ms": settings.DASHBOARD_REFRESH_MS,
+        "pipeline": pipeline_info(),
     }
 
 
@@ -225,6 +227,9 @@ def _dashboard_html() -> str:
 
       <div class=\"sectionTitle\">Models</div>
       <div class=\"card\"><div class=\"list\" id=\"modelList\"></div></div>
+
+      <div class=\"sectionTitle\">Pipeline</div>
+      <div class=\"card\"><div class=\"list\" id=\"pipeList\"></div></div>
 
       <div class=\"sectionTitle\">Jobs</div>
       <div class=\"cols2\">
@@ -368,6 +373,26 @@ def _dashboard_html() -> str:
           root.appendChild(row);
         }
       }
+      function renderPipeline(p) {
+        const root = document.getElementById('pipeList');
+        root.innerHTML = '';
+        if (!p) { root.appendChild(emptyItem('No pipeline info')); return; }
+        const rows = [];
+        try {
+          const pre = p.preprocess || {};
+          const rn = pre.rnnoise || {};
+          const vad = p.vad || {};
+          const ch = p.chunking || {};
+          const asr = p.asr || {};
+          rows.push('preprocess: wav16k mono');
+          rows.push('rnnoise: ' + (rn.enabled ? ('on (' + (rn.model_filename || 'model') + ')') : 'off'));
+          rows.push('vad: ' + (vad.method || '—') + (vad.pyannote_token_set ? '' : ' (no token)'));
+          rows.push('chunking: ' + (ch.mode || '—') + ' (min=' + (ch.min_s||'') + ' max=' + (ch.max_s||'') + ' pad=' + (ch.padding_s||'') + ')');
+          rows.push('asr: whisper (beam=' + (asr.beam_size||'') + ' temp=' + (asr.temperature||'') + ' cond_prev=' + (asr.condition_on_previous_text||false) + ')');
+        } catch (e) {}
+        if (rows.length === 0) { root.appendChild(emptyItem('No pipeline info')); return; }
+        for (const r of rows) root.appendChild(rowItem(r));
+      }
       function renderGpus(items) {
         const root = document.getElementById('gpuGrid');
         root.innerHTML = '';
@@ -393,6 +418,7 @@ def _dashboard_html() -> str:
         setText('jobsRunning', String(jobs.running || 0));
         renderGpus(data.gpus || []);
         renderModels(data.models || []);
+        renderPipeline(data.pipeline || null);
         renderList('queuedList', jobs.queued_ids || [], 'Queue is empty');
         renderList('runningList', jobs.running_ids || [], 'No running jobs');
         const now = new Date();
