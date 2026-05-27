@@ -1,0 +1,31 @@
+.git
+.gitignore
+
+# Local env / secrets (never bake into images)
+.env
+.env.*
+*.env
+build_env.bat
+*secret*
+*secrets*
+*credential*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Python noise
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Local data / uploads / caches
+data/
+**/data/
+uploads/
+**/uploads/
+*.log
+
