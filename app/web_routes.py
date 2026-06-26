@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
 from app.config import settings
+from app.error_log import log_node_error
 from app.types import HealthStatus
 from app.vad_chunking import pipeline_info
 
@@ -67,7 +68,13 @@ async def transcribe(
 ) -> dict[str, Any]:
     core = _core(request)
     if core.health_status != "ready":
-        raise HTTPException(status_code=503, detail={"status": core.health_status})
+        detail = {"status": core.health_status, "error": core.health_error}
+        await log_node_error(
+            component="http.transcribe",
+            message=f"transcribe rejected: worker not ready ({core.health_status})",
+            context=detail,
+        )
+        raise HTTPException(status_code=503, detail=detail)
 
     q = core.queue
     if q is None:

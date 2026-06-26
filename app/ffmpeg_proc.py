@@ -62,12 +62,15 @@ async def preprocess_to_wav(input_path: str, output_path: str) -> dict[str, obje
 
     proc = await asyncio.create_subprocess_exec(
         *cmd,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
-    rc = await proc.wait()
+    _stdout, stderr = await proc.communicate()
+    rc = proc.returncode
     if rc != 0:
-        raise RuntimeError("ffmpeg preprocessing failed")
+        err_text = (stderr or b"").decode("utf-8", errors="replace").strip()
+        detail = err_text or f"exit code {rc}"
+        raise RuntimeError(f"ffmpeg preprocessing failed: {detail}")
 
     return {
         "ffmpeg": {"path": settings.FFMPEG_PATH, "args": cmd},

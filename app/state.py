@@ -10,6 +10,7 @@ from typing import Optional
 
 from app.config import settings
 from app.db import dispose_engine, fetch_hugging_face_token
+from app.error_log import log_node_error
 from app.model_registry import ModelRegistry
 from app.queueing import JobQueue
 from app.types import HealthStatus
@@ -65,6 +66,11 @@ class AppState:
             self.health_status = "error"
             self.health_error = str(e)
             logger.exception("service failed to initialize")
+            await log_node_error(
+                component="state",
+                message=str(e),
+                exc=e,
+            )
             return
 
         try:
@@ -93,6 +99,11 @@ class AppState:
                 self.health_status = "error"
                 self.health_error = str(e)
                 logger.warning("service not ready: %s", e)
+                await log_node_error(
+                    component="state",
+                    message=str(e),
+                    exc=e,
+                )
                 await asyncio.sleep(max(5, int(settings.MODEL_PREPARE_RETRY_S)))
 
     async def shutdown(self) -> None:

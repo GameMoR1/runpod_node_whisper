@@ -11,6 +11,7 @@ from typing import Any, Optional
 import httpx
 
 from app.config import settings
+from app.error_log import log_node_error
 from app.ffmpeg_proc import preprocess_to_wav
 from app.gpu import gpu_count, gpu_metrics, gpu_name, torch_cuda_available, torch_cuda_device_count
 from app.model_registry import ModelRegistry
@@ -157,6 +158,12 @@ class JobQueue:
             if not self._models.is_model_known(job.model):
                 job.status = "failed"
                 job.error = "unknown model"
+                await log_node_error(
+                    component="queue",
+                    message=job.error,
+                    job_id=job_id,
+                    context={"model": job.model},
+                )
                 continue
             job.status = "running"
             job.started_at_ms = now_ms()
@@ -195,6 +202,13 @@ class JobQueue:
                 job.error = str(e)
                 self._failed_total += 1
                 logger.exception("job failed: %s", job_id)
+                await log_node_error(
+                    component="queue",
+                    message=job.error,
+                    job_id=job_id,
+                    context={"model": job.model, "gpu_index": gpu_index},
+                    exc=e,
+                )
             finally:
                 job.finished_at_ms = now_ms()
                 self._gpu_running.pop(gpu_index, None)
@@ -232,6 +246,13 @@ class JobQueue:
         except Exception as e:
             job.callback_error = str(e)
             logger.warning("callback failed: %s", job.job_id)
+            await log_node_error(
+                component="callback",
+                message=str(e),
+                job_id=job.job_id,
+                context={"callback_url": job.callback_url, "status": job.status},
+                exc=e,
+            )
             return
 
         try:
