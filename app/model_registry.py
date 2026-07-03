@@ -54,7 +54,7 @@ class ModelRegistry:
                 """
                 SELECT id_model, model_name
                 FROM whisper_models
-                WHERE source = :source
+                WHERE lower(source) = lower(:source)
                 """,
                 {"source": "whisper"},
             )
@@ -63,7 +63,7 @@ class ModelRegistry:
                 """
                 SELECT model_id AS id_model, model_name
                 FROM whisper_models
-                WHERE source = :source
+                WHERE lower(source) = lower(:source)
                 """,
                 {"source": "whisper"},
             )

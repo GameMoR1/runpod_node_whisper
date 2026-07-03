@@ -88,6 +88,9 @@ class Settings(BaseSettings):
     MODEL_DOWNLOAD_TIMEOUT_S: int = 30
     MODEL_PREPARE_RETRY_S: int = 60
 
+    CALLBACK_TIMEOUT_S: float = 120.0
+    CALLBACK_ATTEMPTS: int = 4
+
     WHISPER_DEFAULT_LANGUAGE: str = "Russian"
     # Best params from internal experiments report:
     # beam_size=3, temperature=0, condition_on_previous_text=False

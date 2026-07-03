@@ -290,25 +290,41 @@ class JobQueue:
             }
             payload["error"] = None
 
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                r = await client.post(job.callback_url, json=payload)
-                if r.status_code < 200 or r.status_code >= 300:
-                    raise RuntimeError("callback failed")
-            job.callback_delivered_at_ms = now_ms()
-            job.callback_error = None
-            logger.info("callback delivered: %s", job.job_id)
-        except Exception as e:
-            job.callback_error = str(e)
-            logger.warning("callback failed: %s", job.job_id)
-            await log_node_error(
-                component="callback",
-                message=str(e),
-                job_id=job.job_id,
-                context={"callback_url": job.callback_url, "status": job.status},
-                exc=e,
-            )
-            return
+        timeout = float(settings.CALLBACK_TIMEOUT_S)
+        timeout = float(settings.CALLBACK_TIMEOUT_S)
+        attempts = max(1, int(settings.CALLBACK_ATTEMPTS))
+        for attempt in range(attempts):
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    r = await client.post(job.callback_url, json=payload)
+                    if r.status_code < 200 or r.status_code >= 300:
+                        raise RuntimeError(f"callback HTTP {r.status_code}")
+                job.callback_delivered_at_ms = now_ms()
+                job.callback_error = None
+                logger.info("callback delivered: %s", job.job_id)
+                break
+            except Exception as e:
+                if attempt + 1 < attempts:
+                    wait_s = min(30, 2**attempt)
+                    logger.warning(
+                        "callback failed: %s (attempt %d/%d, retry in %ss)",
+                        job.job_id,
+                        attempt + 1,
+                        attempts,
+                        wait_s,
+                    )
+                    await asyncio.sleep(wait_s)
+                    continue
+                job.callback_error = str(e)
+                logger.warning("callback failed: %s", job.job_id)
+                await log_node_error(
+                    component="callback",
+                    message=str(e),
+                    job_id=job.job_id,
+                    context={"callback_url": job.callback_url, "status": job.status},
+                    exc=e,
+                )
+                return
 
         try:
             shutil.rmtree(job.file_dir, ignore_errors=True)
