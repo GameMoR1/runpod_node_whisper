@@ -10,7 +10,9 @@ WORKDIR /app
 
 RUN apt-get update -y \
  && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && ffmpeg -version >/dev/null \
+ && ffprobe -version >/dev/null
 
 COPY requirements.txt /app/requirements.txt
 COPY constraints.txt /app/constraints.txt

@@ -17,6 +17,10 @@ from app.types import HealthStatus
 from app.vad_chunking import pipeline_info
 
 
+def _parse_form_bool(value: Optional[str]) -> bool:
+    return str(value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
 logger = logging.getLogger("whisper_node.http")
 
 
@@ -65,6 +69,7 @@ async def transcribe(
     model: str = Form(...),
     callback_url: str = Form(...),
     language: Optional[str] = Form(None),
+    split_by_channels: Optional[str] = Form(None),
 ) -> dict[str, Any]:
     core = _core(request)
     if core.health_status != "ready":
@@ -96,8 +101,22 @@ async def transcribe(
             await f.write(chunk)
 
     lang = language or settings.WHISPER_DEFAULT_LANGUAGE
-    await q.enqueue(job_id=job_id, model=model, language=lang, callback_url=callback_url, file_dir=str(job_dir))
-    logger.info("transcribe accepted: %s model=%s language=%s", job_id, model, lang)
+    split_channels = _parse_form_bool(split_by_channels)
+    await q.enqueue(
+        job_id=job_id,
+        model=model,
+        language=lang,
+        callback_url=callback_url,
+        file_dir=str(job_dir),
+        split_by_channels=split_channels,
+    )
+    logger.info(
+        "transcribe accepted: %s model=%s language=%s split_by_channels=%s",
+        job_id,
+        model,
+        lang,
+        split_channels,
+    )
     return {"job_id": job_id}
 
 

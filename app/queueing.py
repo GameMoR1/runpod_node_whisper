@@ -12,12 +12,16 @@ import httpx
 
 from app.config import settings
 from app.error_log import log_node_error
-from app.ffmpeg_proc import preprocess_to_wav
+from app.channel_proc import (
+    merge_channel_results,
+    prepare_channel_wavs,
+    transcribe_channel_wav,
+)
 from app.gpu import gpu_count, gpu_metrics, gpu_name, torch_cuda_available, torch_cuda_device_count
 from app.model_registry import ModelRegistry
 from app.types import GpuState, JobRecord
 from app.utils_time import now_ms, ms_to_s
-from app.vad_chunking import build_hybrid_chunks, get_speech_segments
+from app.vad_chunking import pipeline_info
 from app.whisper_runner import transcribe_chunks_on_gpu
 
 
@@ -61,7 +65,16 @@ class JobQueue:
                 pass
         self._workers = []
 
-    async def enqueue(self, *, job_id: str, model: str, language: str, callback_url: str, file_dir: str) -> None:
+    async def enqueue(
+        self,
+        *,
+        job_id: str,
+        model: str,
+        language: str,
+        callback_url: str,
+        file_dir: str,
+        split_by_channels: bool = False,
+    ) -> None:
         jr = JobRecord(
             job_id=job_id,
             status="queued",
@@ -76,6 +89,7 @@ class JobQueue:
             callback_delivered_at_ms=None,
             callback_error=None,
             file_dir=file_dir,
+            split_by_channels=split_by_channels,
         )
         self._jobs[job_id] = jr
         await self._q.put(job_id)
@@ -173,24 +187,63 @@ class JobQueue:
 
             job_dir = Path(job.file_dir)
             in_path = job_dir / "input"
-            wav_path = job_dir / "audio.wav"
+            wav_paths: list[Path] = []
 
             try:
-                preprocess_info = await preprocess_to_wav(str(in_path), str(wav_path))
-                logger.info("job preprocessed: %s", job_id)
-                segments = get_speech_segments(wav_path)
-                chunks = build_hybrid_chunks(audio_path=wav_path, segments=segments, job_dir=job_dir)
-                result = await transcribe_chunks_on_gpu(
-                    gpu_index=gpu_index,
-                    chunks=chunks,
-                    model_name=job.model,
-                    language=job.language,
+                channel_sources, preprocess_meta = await prepare_channel_wavs(
+                    str(in_path),
+                    job_dir,
+                    split_by_channels=job.split_by_channels,
                 )
+                wav_paths = [path for _ch, path in channel_sources]
+                logger.info(
+                    "job preprocessed: %s mode=%s channels=%s",
+                    job_id,
+                    preprocess_meta.get("mode"),
+                    preprocess_meta.get("source_channels"),
+                )
+
+                split_active = bool(
+                    job.split_by_channels and preprocess_meta.get("source_channels", 1) > 1
+                )
+                channel_results: list[tuple[int, dict[str, Any]]] = []
+                total_segments = 0
+                total_chunks = 0
+
+                for ch_idx, wav_path in channel_sources:
+                    ch_dir = job_dir / f"ch{ch_idx}"
+                    ch_dir.mkdir(parents=True, exist_ok=True)
+                    ch_result = await transcribe_channel_wav(
+                        gpu_index=gpu_index,
+                        wav_path=wav_path,
+                        job_dir=ch_dir,
+                        model_name=job.model,
+                        language=job.language,
+                        transcribe_chunks_fn=transcribe_chunks_on_gpu,
+                        channel_index=ch_idx,
+                        tag_speaker=split_active or job.split_by_channels,
+                    )
+                    channel_results.append((ch_idx, ch_result))
+                    total_segments += len(ch_result.get("segments") or [])
+
+                if split_active and len(channel_results) > 1:
+                    result = merge_channel_results(channel_results)
+                else:
+                    result = channel_results[0][1]
+                    if job.split_by_channels:
+                        speaker = "speaker_0"
+                        result["speakers"] = [{"id": speaker, "channel": 0}]
+                        for seg in result.get("segments") or []:
+                            if isinstance(seg, dict) and "speaker" not in seg:
+                                seg["speaker"] = speaker
+                                seg["channel"] = 0
+
                 if isinstance(result, dict):
                     result["pipeline"] = {
-                        "preprocess": preprocess_info,
-                        "vad": {"method": settings.VAD_METHOD, "segments": len(segments)},
-                        "chunking": {"mode": "vad_hybrid", "chunks": len(chunks)},
+                        "preprocess": preprocess_meta,
+                        "vad": {"method": settings.VAD_METHOD},
+                        "chunking": {"mode": "vad_hybrid", "segments": total_segments, "chunks": total_chunks},
+                        "split_by_channels": job.split_by_channels,
                     }
                 job.result = result
                 job.status = "completed"
@@ -212,11 +265,12 @@ class JobQueue:
             finally:
                 job.finished_at_ms = now_ms()
                 self._gpu_running.pop(gpu_index, None)
-                try:
-                    if wav_path.exists():
-                        wav_path.unlink()
-                except Exception:
-                    pass
+                for wav_path in wav_paths:
+                    try:
+                        if wav_path.exists():
+                            wav_path.unlink()
+                    except Exception:
+                        pass
 
             await self._deliver_callback_and_cleanup(job)
 
@@ -226,6 +280,7 @@ class JobQueue:
             payload["result"] = {
                 "text": job.result.get("text"),
                 "segments": job.result.get("segments"),
+                "speakers": job.result.get("speakers"),
                 "queue_time_s": payload.get("queue_time_s"),
                 "processing_time_s": payload.get("processing_time_s"),
                 "gpu": job.result.get("gpu"),

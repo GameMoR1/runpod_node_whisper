@@ -49,4 +49,5 @@ class JobRecord:
     callback_delivered_at_ms: Optional[int]
     callback_error: Optional[str]
     file_dir: str
+    split_by_channels: bool = False
 

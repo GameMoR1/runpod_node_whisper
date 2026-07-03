@@ -22,6 +22,8 @@ logger = logging.getLogger("whisper_node")
 def _check_ffmpeg() -> None:
     if shutil.which("ffmpeg") is None:
         raise RuntimeError("ffmpeg not found in PATH")
+    if shutil.which("ffprobe") is None:
+        raise RuntimeError("ffprobe not found in PATH")
 
 
 def _check_whisper_module() -> None:
